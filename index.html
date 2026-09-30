@@ -90,10 +90,10 @@
         <div id="searchResults"></div>
     </div>
 
-    <!-- Exact Conjunction Tab (NEW) -->
+    <!-- Exact Conjunction Tab -->
     <div id="content-exact" class="content-section hidden">
         <div class="card border border-purple-600">
-            <h2 class="text-lg font-bold mb-3 text-purple-400">Find Exact Conjunction (0°)</h2>
+            <h2 class="text-lg font-bold mb-3 text-purple-400">Find Exact Conjunction</h2>
             <p class="text-xs text-slate-400 mb-3">Ye tab aapko exact same degree par hone wala conjunction dikhayega.</p>
             <div class="grid grid-cols-2 gap-2 mb-3">
                 <select id="exactP1" class="p-2 bg-slate-700 rounded text-white outline-none">
@@ -103,7 +103,7 @@
                     <option>Neptune</option><option>Pluto</option>
                 </select>
                 <select id="exactP2" class="p-2 bg-slate-700 rounded text-white outline-none">
-                    <option>Mars</option><option>Moon</option><option>Jupiter</option><option>Saturn</option>
+                    <option>Saturn</option><option>Moon</option><option>Mars</option><option>Jupiter</option>
                     <option>Mercury</option><option>Venus</option>
                     <option>Rahu</option><option>Ketu</option><option>Uranus</option>
                     <option>Neptune</option><option>Pluto</option>
@@ -112,8 +112,13 @@
             <label class="block text-xs mb-1 text-slate-400">Start Date</label>
             <input type="date" id="exactStart" class="w-full p-2 mb-2 bg-slate-700 rounded text-white outline-none">
             <label class="block text-xs mb-1 text-slate-400">End Date</label>
-            <input type="date" id="exactEnd" class="w-full p-2 mb-3 bg-slate-700 rounded text-white outline-none">
-            <button onclick="runExactSearch()" class="w-full bg-purple-600 hover:bg-purple-700 text-white p-2 rounded font-bold cursor-pointer">Find Exact Same Degree</button>
+            <input type="date" id="exactEnd" class="w-full p-2 mb-2 bg-slate-700 rounded text-white outline-none">
+            
+            <!-- NAYA INPUT: Maximum Difference -->
+            <label class="block text-xs mb-1 text-slate-400">Maximum Difference (Degree) - e.g., 0.5, 1, 2</label>
+            <input type="number" id="exactDegree" value="1" step="0.1" min="0" max="5" class="w-full p-2 mb-3 bg-slate-700 rounded text-white outline-none">
+
+            <button onclick="runExactSearch()" class="w-full bg-purple-600 hover:bg-purple-700 text-white p-2 rounded font-bold cursor-pointer">Find Conjunction</button>
         </div>
         <div id="exactResults"></div>
     </div>
