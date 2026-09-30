@@ -13,12 +13,14 @@
         .positive { color: #10b981; font-weight: bold; }
         .negative { color: #ef4444; font-weight: bold; }
         .neutral { color: #f59e0b; font-weight: bold; }
+        .tab-btn { cursor: pointer; }
+        .action-btn { cursor: pointer; }
     </style>
 </head>
 <body class="p-4 max-w-md mx-auto">
     <header class="flex justify-between items-center mb-6">
         <h1 class="text-2xl font-bold text-white">AstroMomentum</h1>
-        <button onclick="toggleSettings()" class="text-blue-400 text-xl">⚙️</button>
+        <button onclick="toggleSettings()" class="text-blue-400 text-xl cursor-pointer">⚙️</button>
     </header>
 
     <!-- Settings Panel -->
@@ -35,15 +37,15 @@
             <option value="RAMAN">B.V. Raman</option>
             <option value="FAGAN_BRADLEY">Fagan Bradley</option>
         </select>
-        <button onclick="saveSettings()" class="w-full bg-blue-600 hover:bg-blue-700 text-white p-2 rounded font-bold">Save Settings</button>
+        <button onclick="saveSettings()" class="w-full bg-blue-600 hover:bg-blue-700 text-white p-2 rounded font-bold cursor-pointer">Save Settings</button>
     </div>
 
     <!-- Tabs -->
     <div class="flex space-x-4 mb-4 border-b border-slate-700 pb-2 overflow-x-auto">
-        <button onclick="showTab('daily')" id="tab-daily" class="tab-active px-2 py-1 whitespace-nowrap">Daily</button>
-        <button onclick="showTab('weekly')" id="tab-weekly" class="px-2 py-1 whitespace-nowrap">Weekly</button>
-        <button onclick="showTab('monthly')" id="tab-monthly" class="px-2 py-1 whitespace-nowrap">Monthly</button>
-        <button onclick="showTab('search')" id="tab-search" class="px-2 py-1 whitespace-nowrap">Search</button>
+        <button onclick="showTab('daily')" id="tab-daily" class="tab-active tab-btn px-2 py-1 whitespace-nowrap">Daily</button>
+        <button onclick="showTab('weekly')" id="tab-weekly" class="tab-btn px-2 py-1 whitespace-nowrap">Weekly</button>
+        <button onclick="showTab('monthly')" id="tab-monthly" class="tab-btn px-2 py-1 whitespace-nowrap">Monthly</button>
+        <button onclick="showTab('search')" id="tab-search" class="tab-btn px-2 py-1 whitespace-nowrap">Search</button>
     </div>
 
     <!-- Loading -->
@@ -75,7 +77,7 @@
             <input type="date" id="searchStart" class="w-full p-2 mb-2 bg-slate-700 rounded text-white outline-none">
             <label class="block text-xs mb-1 text-slate-400">End Date</label>
             <input type="date" id="searchEnd" class="w-full p-2 mb-3 bg-slate-700 rounded text-white outline-none">
-            <button onclick="runSearch()" class="w-full bg-green-600 hover:bg-green-700 text-white p-2 rounded font-bold">Search</button>
+            <button onclick="runSearch()" class="w-full bg-green-600 hover:bg-green-700 text-white p-2 rounded font-bold cursor-pointer">Search</button>
         </div>
         <div id="searchResults"></div>
     </div>
