@@ -78,7 +78,6 @@ function init() {
 
 // --- Core Astronomical Calculations (Using Astronomy Engine) ---
 function getPlanetPos(planetName, date) {
-    // Astronomy Engine body mapping
     const bodyMap = {
         Sun: Astronomy.Body.Sun, Moon: Astronomy.Body.Moon, Mercury: Astronomy.Body.Mercury,
         Venus: Astronomy.Body.Venus, Mars: Astronomy.Body.Mars, Jupiter: Astronomy.Body.Jupiter,
@@ -89,13 +88,11 @@ function getPlanetPos(planetName, date) {
     let lon, lat;
     
     if (planetName === 'Rahu' || planetName === 'Ketu') {
-        // Calculate True Node for Rahu/Ketu
         const node = Astronomy.SearchMoonNode(date);
-        lon = node.time.date.getTime() ? node.time.date.getTime() : 0; // Fallback
-        // Use mean node approximation if true node fails
+        lon = node.time.date.getTime() ? node.time.date.getTime() : 0;
         const moon = Astronomy.GeoMoon(date);
         const ecl = Astronomy.Ecliptic(moon);
-        lon = ecl.elon - 180; // Mean Node approximation for simplicity
+        lon = ecl.elon - 180;
         if (planetName === 'Ketu') lon += 180;
     } else {
         const vector = Astronomy.GeoVector(bodyMap[planetName], date, true);
@@ -104,7 +101,6 @@ function getPlanetPos(planetName, date) {
         lat = ecl.elat;
     }
 
-    // Retrograde detection: compare position 1 day ago and 1 day later
     let retro = false;
     if (planetName !== 'Sun' && planetName !== 'Moon' && planetName !== 'Rahu' && planetName !== 'Ketu') {
         const prevDate = new Date(date.getTime() - 86400000);
@@ -121,10 +117,9 @@ function getPlanetPos(planetName, date) {
 }
 
 function getAyanamsaValue(date, mode) {
-    // Approximate Ayanamsa calculation based on J2000 epoch
     const J2000 = new Date('2000-01-01T12:00:00Z');
     const yearsSinceJ2000 = (date - J2000) / (365.25 * 24 * 3600 * 1000);
-    const precessionRate = 50.29 / 3600; // degrees per year
+    const precessionRate = 50.29 / 3600;
     const baseAyanamsa = AYANAMSA_OFFSETS[mode] || 24.15;
     return baseAyanamsa + (yearsSinceJ2000 * precessionRate);
 }
@@ -138,7 +133,7 @@ function isCombust(planetLon, sunLon, planetName) {
 
 function isBullishSign(lon) {
     const normLon = (lon % 360 + 360) % 360;
-    return normLon >= 0 && normLon < 180; // Aries to Virgo
+    return normLon >= 0 && normLon < 180;
 }
 
 // --- Rule Evaluator ---
@@ -158,7 +153,6 @@ function evaluateEffect(p1, p2, p1Data, p2Data, sunLon) {
     }
     if (conditions["Jupiter Fast Moving"] && (p1 === "Jupiter" || p2 === "Jupiter")) {
         let jup = p1 === "Jupiter" ? p1Data : p2Data;
-        // Fast moving approximation: Jupiter speed > 0.1 deg/day
         const nextDate = new Date(Date.now() + 86400000);
         const jupNext = getPlanetPos("Jupiter", nextDate);
         const speed = Math.abs(jupNext.lon - jup.lon);
@@ -177,7 +171,6 @@ function evaluateEffect(p1, p2, p1Data, p2Data, sunLon) {
         if (nep.retro || isCombust(nep.lon, sunLon, "Neptune")) effect = conditions["Neptune Retrograde or Combust"];
     }
 
-    // Bullish/Bearish Logic for Jupiter/Saturn
     if (effect.includes("Bullish Signs") && (p1 === "Jupiter" || p1 === "Saturn" || p2 === "Jupiter" || p2 === "Saturn")) {
         let combinedLon = (p1Data.lon + p2Data.lon) / 2;
         if (isBullishSign(combinedLon)) {
@@ -187,12 +180,44 @@ function evaluateEffect(p1, p2, p1Data, p2Data, sunLon) {
         }
     }
     
-    // Retrograde override for Jupiter/Venus/Saturn
     if (effect.includes("If either Retrograde") && (p1Data.retro || p2Data.retro)) {
         effect = "Negative Momentum (Retrograde Override)";
     }
 
     return effect;
+}
+
+// --- Find Exact Time of Conjunction ---
+function findExactTime(p1, p2, date, ayanamsaMode) {
+    let bestDiff = 999;
+    let bestTime = "12:00";
+    let bestDegree = 0;
+    
+    // Check every 15 minutes of the day (00:00 to 23:45)
+    for (let m = 0; m < 1440; m += 15) {
+        let d = new Date(date);
+        d.setHours(0, 0, 0, 0);
+        d.setMinutes(m);
+        
+        const ayan = getAyanamsaValue(d, ayanamsaMode);
+        const p1Data = getPlanetPos(p1, d);
+        const p2Data = getPlanetPos(p2, d);
+        
+        let p1Lon = p1Data.lon - ayan;
+        let p2Lon = p2Data.lon - ayan;
+        
+        let diff = Math.abs(p1Lon - p2Lon);
+        if (diff > 180) diff = 360 - diff;
+        
+        if (diff < bestDiff) {
+            bestDiff = diff;
+            let hours = Math.floor(m / 60);
+            let mins = m % 60;
+            bestTime = String(hours).padStart(2, '0') + ":" + String(mins).padStart(2, '0');
+            bestDegree = ((p1Lon % 360 + 360) % 360).toFixed(2);
+        }
+    }
+    return { time: bestTime, degree: bestDegree };
 }
 
 // --- Transit Scanner ---
@@ -221,11 +246,15 @@ function scanTransits(startDate, endDate, selectedPairs) {
             if (diff > 180) diff = 360 - diff;
 
             if (diff <= 10) { // 10 degree orb for conjunction
+                // Conjunction detected on this day! Now find exact time.
+                let exact = findExactTime(p1, p2, current, state.ayanamsa);
                 let effect = evaluateEffect(p1, p2, p1Data, p2Data, sunLon);
+                
                 results.push({
                     date: dayjs(current).format('DD MMM YYYY'),
+                    time: exact.time, // Exact Time Added
                     p1: p1, p2: p2,
-                    degree: ((p1Data.lon % 360 + 360) % 360).toFixed(2), // FIXED: Always positive degree
+                    degree: exact.degree, // Degree at exact time
                     effect: effect,
                     isPositive: effect.includes("Positive") && !effect.includes("Negative")
                 });
@@ -280,7 +309,7 @@ function renderTransits(days) {
             html += `
                 <div class="card">
                     <div class="flex justify-between items-center mb-1">
-                        <span class="text-sm text-slate-400">${r.date}</span>
+                        <span class="text-sm text-slate-400">${r.date} at ${r.time}</span>
                         <span class="text-xs bg-slate-700 px-2 py-1 rounded">${r.degree}°</span>
                     </div>
                     <div class="font-bold text-lg text-white">${r.p1} + ${r.p2}</div>
@@ -319,7 +348,7 @@ function runSearch() {
             html += `
                 <div class="card">
                     <div class="flex justify-between items-center mb-1">
-                        <span class="text-sm text-slate-400">${r.date}</span>
+                        <span class="text-sm text-slate-400">${r.date} at ${r.time}</span>
                         <span class="text-xs bg-slate-700 px-2 py-1 rounded">${r.degree}°</span>
                     </div>
                     <div class="font-bold text-lg text-white">${r.p1} + ${r.p2}</div>
