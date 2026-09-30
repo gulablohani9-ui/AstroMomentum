@@ -170,7 +170,6 @@ function findExactTime(p1, p2, date, targetOrb, ayanamsaMode) {
     let bestTime = "12:00";
     let bestDegree = 0;
     
-    // Check every 10 minutes for precision
     for (let m = 0; m < 1440; m += 10) {
         let d = new Date(date);
         d.setHours(0, 0, 0, 0);
@@ -207,13 +206,20 @@ function scanTransits(startDate, endDate, selectedPairs, targetOrb = 5, isDegree
 
     while (current <= end) {
         let currentAyan = getAyanamsaValue(current, state.ayanamsa);
-        
+        let prevDate = new Date(current); prevDate.setDate(prevDate.getDate() - 1);
+        let nextDate = new Date(current); nextDate.setDate(nextDate.getDate() + 1);
+
         let currentPos = {};
+        let prevPos = {};
+        let nextPos = {};
+
         const allPlanets = ['Sun', 'Moon', 'Mercury', 'Venus', 'Mars', 'Jupiter', 'Saturn', 'Uranus', 'Neptune', 'Pluto', 'Rahu', 'Ketu'];
         
         allPlanets.forEach(p => {
             let c = getPlanetPos(p, current); c.lon -= currentAyan;
-            currentPos[p] = c;
+            let pr = getPlanetPos(p, prevDate); pr.lon -= getAyanamsaValue(prevDate, state.ayanamsa);
+            let nx = getPlanetPos(p, nextDate); nx.lon -= getAyanamsaValue(nextDate, state.ayanamsa);
+            currentPos[p] = c; prevPos[p] = pr; nextPos[p] = nx;
         });
 
         const sunData = currentPos['Sun'];
@@ -230,14 +236,22 @@ function scanTransits(startDate, endDate, selectedPairs, targetOrb = 5, isDegree
 
             let isMatch = false;
             if (isDegreeSearch) {
-                // For exact search (targetOrb = 0), tolerance is 0.5 deg
-                // For degree search (e.g. targetOrb = 1), tolerance is 0.5 deg
                 if (Math.abs(diff - targetOrb) <= 0.5) {
                     isMatch = true;
                 }
             } else {
                 if (diff <= targetOrb) {
-                    isMatch = true;
+                    // For Dashboard: Check if it's the exact day (minimum difference)
+                    let prevDiff = Math.abs(prevPos[p1].lon - prevPos[p2].lon);
+                    if (prevDiff > 180) prevDiff = 360 - prevDiff;
+                    
+                    let nextDiff = Math.abs(nextPos[p1].lon - nextPos[p2].lon);
+                    if (nextDiff > 180) nextDiff = 360 - nextDiff;
+
+                    // Only show if today's difference is the smallest
+                    if (diff <= prevDiff && diff <= nextDiff) {
+                        isMatch = true;
+                    }
                 }
             }
 
@@ -333,7 +347,6 @@ window.runSearch = function() {
     }, 100);
 };
 
-// --- NEW EXACT SEARCH FUNCTION ---
 window.runExactSearch = function() {
     const p1 = document.getElementById('exactP1').value;
     const p2 = document.getElementById('exactP2').value;
@@ -347,7 +360,6 @@ window.runExactSearch = function() {
     resultsDiv.innerHTML = '<div class="text-center py-4 text-slate-400">Calculating exact conjunction...</div>';
 
     setTimeout(() => {
-        // Here, targetOrb = 0, isDegreeSearch = true. Tolerance is 0.5 deg.
         const results = scanTransits(new Date(start), new Date(end), [[p1, p2]], 0, true);
         
         if (results.length === 0) {
