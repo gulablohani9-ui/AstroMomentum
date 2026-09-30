@@ -225,7 +225,7 @@ function scanTransits(startDate, endDate, selectedPairs) {
                 results.push({
                     date: dayjs(current).format('DD MMM YYYY'),
                     p1: p1, p2: p2,
-                    degree: p1Data.lon.toFixed(2),
+                    degree: ((p1Data.lon % 360 + 360) % 360).toFixed(2), // FIXED: Always positive degree
                     effect: effect,
                     isPositive: effect.includes("Positive") && !effect.includes("Negative")
                 });
