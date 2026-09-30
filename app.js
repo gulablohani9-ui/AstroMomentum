@@ -1,17 +1,10 @@
-// --- Astronomy Engine Imported Globally via script tag ---
-// Ayanamsa Map (Approximate values for calculations)
+// --- Ayanamsa Map ---
 const AYANAMSA_OFFSETS = {
-    LAHIRI: 24.15,   // Lahiri (Chitrapaksha)
-    KP: 23.85,       // KP (Krishnamurti)
-    RAMAN: 21.50,    // B.V. Raman
-    FAGAN_BRADLEY: 24.75
+    LAHIRI: 24.15, KP: 23.85, RAMAN: 21.50, FAGAN_BRADLEY: 24.75
 };
 
 // --- State ---
-let state = {
-    lat: 19.0760, lon: 72.8777,
-    ayanamsa: 'LAHIRI'
-};
+let state = { lat: 19.0760, lon: 72.8777, ayanamsa: 'LAHIRI' };
 
 // --- Rules Engine (Aapki Tables Ka JSON) ---
 const RULES = {
@@ -24,13 +17,11 @@ const RULES = {
     "Mars-Uranus": { base: "Positive Momentum" },
     "Mars-Neptune": { base: "Before Conjunction Positive Momentum and post Conjunction Negative Momentum" },
     "Mars-Pluto": { base: "General Positive Momentum" },
-
     "Saturn-Rahu": { base: "Major Negative Momentum in Bearish Sign, but in Bullish signs General Momentum" },
     "Saturn-Ketu": { base: "General Negative Momentum" },
     "Saturn-Uranus": { base: "Major Negative Momentum in Bearish Sign, but in Bullish signs General Momentum" },
     "Saturn-Neptune": { base: "Major Negative Momentum in Bearish Sign, but in Bullish signs General Momentum" },
     "Saturn-Pluto": { base: "No Effect found" },
-
     "Moon-Mars": { base: "General Positive Momentum" },
     "Moon-Mercury": { base: "Sometimes Positive Momentum and Sometimes Negative Momentum" },
     "Moon-Jupiter": { base: "Sometimes Positive Momentum and Sometimes Negative Momentum" },
@@ -41,7 +32,6 @@ const RULES = {
     "Moon-Uranus": { base: "General Positive Momentum" },
     "Moon-Neptune": { base: "Before Conjunction Positive Momentum and post Conjunction Negative Momentum" },
     "Moon-Pluto": { base: "General Positive Momentum" },
-
     "Rahu-Uranus": { base: "Major Negative Momentum in Bearish Sign, but in Bullish signs General Negative Momentum" },
     "Rahu-Neptune": { base: "General Positive Momentum. If Neptune Retrograde or Combust then Negative Momentum" },
     "Rahu-Pluto": { base: "No Effect found" },
@@ -50,7 +40,6 @@ const RULES = {
     "Ketu-Pluto": { base: "No Effect found" },
     "Uranus-Neptune": { base: "Major Negative Momentum" },
     "Uranus-Pluto": { base: "No Effect found" },
-
     "Mercury-Jupiter": { base: "General Positive Momentum" },
     "Mercury-Venus": { base: "Negative Momentum", cond: { "Mercury Combust or Retrograde": "Positive Momentum" } },
     "Mercury-Saturn": { base: "Volatile Trend in both sides" },
@@ -59,7 +48,6 @@ const RULES = {
     "Mercury-Uranus": { base: "Positive Momentum" },
     "Mercury-Neptune": { base: "Before Conjunction Positive Momentum and post Conjunction Negative Momentum" },
     "Mercury-Pluto": { base: "Positive Momentum" },
-
     "Jupiter-Venus": { base: "Positive Momentum in Bullish Signs, Negative Momentum in Bearish Signs. If either Retrograde then Negative Momentum" },
     "Jupiter-Saturn": { base: "Positive Momentum. In both planets, if anyone is Retrograde then Negative Momentum" },
     "Jupiter-Rahu": { base: "Positive Momentum, But if Jupiter is Retrograde then Negative Momentum" },
@@ -71,12 +59,17 @@ const RULES = {
 
 // --- Initialize ---
 function init() {
-    document.getElementById('loading').classList.add('hidden');
-    loadSettings();
-    showTab('daily');
+    try {
+        document.getElementById('loading').classList.add('hidden');
+        loadSettings();
+        setTimeout(() => { showTab('daily'); }, 100);
+    } catch(e) {
+        document.getElementById('loading').innerText = "Error: " + e.message;
+        console.error(e);
+    }
 }
 
-// --- Core Astronomical Calculations (Using Astronomy Engine) ---
+// --- Core Calculations ---
 function getPlanetPos(planetName, date) {
     const bodyMap = {
         Sun: Astronomy.Body.Sun, Moon: Astronomy.Body.Moon, Mercury: Astronomy.Body.Mercury,
@@ -85,35 +78,35 @@ function getPlanetPos(planetName, date) {
         Pluto: Astronomy.Body.Pluto
     };
 
-    let lon, lat;
+    let lon = 0;
     
     if (planetName === 'Rahu' || planetName === 'Ketu') {
-        const node = Astronomy.SearchMoonNode(date);
-        lon = node.time.date.getTime() ? node.time.date.getTime() : 0;
-        const moon = Astronomy.GeoMoon(date);
-        const ecl = Astronomy.Ecliptic(moon);
-        lon = ecl.elon - 180;
+        // Pure mathematical Mean Node calculation (No external API crashes)
+        const J2000 = new Date('2000-01-01T12:00:00Z');
+        const T = (date - J2000) / (36525 * 24 * 3600 * 1000); // Julian centuries
+        lon = 125.04452 - 1934.136261 * T + 0.0020708 * T * T + (T * T * T) / 450000;
         if (planetName === 'Ketu') lon += 180;
     } else {
         const vector = Astronomy.GeoVector(bodyMap[planetName], date, true);
         const ecl = Astronomy.Ecliptic(vector);
         lon = ecl.elon;
-        lat = ecl.elat;
     }
 
     let retro = false;
     if (planetName !== 'Sun' && planetName !== 'Moon' && planetName !== 'Rahu' && planetName !== 'Ketu') {
-        const prevDate = new Date(date.getTime() - 86400000);
-        const nextDate = new Date(date.getTime() + 86400000);
-        const prevVec = Astronomy.GeoVector(bodyMap[planetName], prevDate, true);
-        const nextVec = Astronomy.GeoVector(bodyMap[planetName], nextDate, true);
-        const prevLon = Astronomy.Ecliptic(prevVec).elon;
-        const nextLon = Astronomy.Ecliptic(nextVec).elon;
-        if (nextLon < prevLon && Math.abs(nextLon - prevLon) < 180) retro = true;
-        if (nextLon > prevLon && Math.abs(nextLon - prevLon) > 180) retro = true;
+        try {
+            const prevDate = new Date(date.getTime() - 86400000);
+            const nextDate = new Date(date.getTime() + 86400000);
+            const prevVec = Astronomy.GeoVector(bodyMap[planetName], prevDate, true);
+            const nextVec = Astronomy.GeoVector(bodyMap[planetName], nextDate, true);
+            const prevLon = Astronomy.Ecliptic(prevVec).elon;
+            const nextLon = Astronomy.Ecliptic(nextVec).elon;
+            if (nextLon < prevLon && Math.abs(nextLon - prevLon) < 180) retro = true;
+            if (nextLon > prevLon && Math.abs(nextLon - prevLon) > 180) retro = true;
+        } catch(e) { retro = false; }
     }
 
-    return { lon: lon, lat: lat || 0, retro: retro };
+    return { lon: lon, retro: retro };
 }
 
 function getAyanamsaValue(date, mode) {
@@ -153,10 +146,7 @@ function evaluateEffect(p1, p2, p1Data, p2Data, sunLon) {
     }
     if (conditions["Jupiter Fast Moving"] && (p1 === "Jupiter" || p2 === "Jupiter")) {
         let jup = p1 === "Jupiter" ? p1Data : p2Data;
-        const nextDate = new Date(Date.now() + 86400000);
-        const jupNext = getPlanetPos("Jupiter", nextDate);
-        const speed = Math.abs(jupNext.lon - jup.lon);
-        if (speed > 0.1) effect = conditions["Jupiter Fast Moving"];
+        if (Math.abs(jup.speed || 0) > 0.1) effect = conditions["Jupiter Fast Moving"];
     }
     if (conditions["Saturn Retrograde"] && (p1 === "Saturn" || p2 === "Saturn")) {
         let sat = p1 === "Saturn" ? p1Data : p2Data;
@@ -187,14 +177,14 @@ function evaluateEffect(p1, p2, p1Data, p2Data, sunLon) {
     return effect;
 }
 
-// --- Find Exact Time of Conjunction ---
+// --- Find Exact Time (Optimized for Speed) ---
 function findExactTime(p1, p2, date, ayanamsaMode) {
     let bestDiff = 999;
     let bestTime = "12:00";
     let bestDegree = 0;
     
-    // Check every 15 minutes of the day (00:00 to 23:45)
-    for (let m = 0; m < 1440; m += 15) {
+    // Check every 30 minutes instead of 15 to make it 2x faster
+    for (let m = 0; m < 1440; m += 30) {
         let d = new Date(date);
         d.setHours(0, 0, 0, 0);
         d.setMinutes(m);
@@ -220,7 +210,7 @@ function findExactTime(p1, p2, date, ayanamsaMode) {
     return { time: bestTime, degree: bestDegree };
 }
 
-// --- Transit Scanner ---
+// --- Transit Scanner (Optimized) ---
 function scanTransits(startDate, endDate, selectedPairs) {
     let results = [];
     let current = new Date(startDate);
@@ -231,30 +221,34 @@ function scanTransits(startDate, endDate, selectedPairs) {
         const sunData = getPlanetPos('Sun', current);
         let sunLon = sunData.lon - ayan;
 
+        // Pre-calculate all planet positions for this day at 12:00 to save massive time
+        let dayPositions = {};
+        const allPlanets = ['Sun', 'Moon', 'Mercury', 'Venus', 'Mars', 'Jupiter', 'Saturn', 'Uranus', 'Neptune', 'Pluto', 'Rahu', 'Ketu'];
+        allPlanets.forEach(p => {
+            let pos = getPlanetPos(p, current);
+            pos.lon -= ayan;
+            dayPositions[p] = pos;
+        });
+
         for (let pair of selectedPairs) {
             let p1 = pair[0], p2 = pair[1];
             if (p1 === p2) continue;
 
-            let p1Data = getPlanetPos(p1, current);
-            let p2Data = getPlanetPos(p2, current);
-            
-            p1Data.lon -= ayan;
-            p2Data.lon -= ayan;
-            sunLon = sunData.lon - ayan;
+            let p1Data = dayPositions[p1];
+            let p2Data = dayPositions[p2];
 
             let diff = Math.abs(p1Data.lon - p2Data.lon);
             if (diff > 180) diff = 360 - diff;
 
-            if (diff <= 10) { // 10 degree orb for conjunction
-                // Conjunction detected on this day! Now find exact time.
+            if (diff <= 10) { // Conjunction detected
                 let exact = findExactTime(p1, p2, current, state.ayanamsa);
                 let effect = evaluateEffect(p1, p2, p1Data, p2Data, sunLon);
                 
                 results.push({
                     date: dayjs(current).format('DD MMM YYYY'),
-                    time: exact.time, // Exact Time Added
+                    time: exact.time,
                     p1: p1, p2: p2,
-                    degree: exact.degree, // Degree at exact time
+                    degree: exact.degree,
                     effect: effect,
                     isPositive: effect.includes("Positive") && !effect.includes("Negative")
                 });
@@ -267,15 +261,19 @@ function scanTransits(startDate, endDate, selectedPairs) {
 
 // --- UI Functions ---
 function showTab(tab) {
-    document.querySelectorAll('.content-section').forEach(el => el.classList.add('hidden'));
-    document.querySelectorAll('.tab-active').forEach(el => el.classList.remove('tab-active'));
-    
-    document.getElementById(`content-${tab}`).classList.remove('hidden');
-    document.getElementById(`tab-${tab}`).classList.add('tab-active');
+    try {
+        document.querySelectorAll('.content-section').forEach(el => el.classList.add('hidden'));
+        document.querySelectorAll('.tab-active').forEach(el => el.classList.remove('tab-active'));
+        
+        document.getElementById(`content-${tab}`).classList.remove('hidden');
+        document.getElementById(`tab-${tab}`).classList.add('tab-active');
 
-    if (tab === 'daily') renderTransits(1);
-    else if (tab === 'weekly') renderTransits(7);
-    else if (tab === 'monthly') renderTransits(30);
+        if (tab === 'daily') renderTransits(1);
+        else if (tab === 'weekly') renderTransits(7);
+        else if (tab === 'monthly') renderTransits(30);
+    } catch(e) {
+        alert("Error: " + e.message);
+    }
 }
 
 function renderTransits(days) {
@@ -375,13 +373,15 @@ function saveSettings() {
 }
 
 function loadSettings() {
-    const saved = localStorage.getItem('astroSettings');
-    if (saved) {
-        state = { ...state, ...JSON.parse(saved) };
-        document.getElementById('lat').value = state.lat;
-        document.getElementById('lon').value = state.lon;
-        document.getElementById('ayanamsa').value = state.ayanamsa;
-    }
+    try {
+        const saved = localStorage.getItem('astroSettings');
+        if (saved) {
+            state = { ...state, ...JSON.parse(saved) };
+            document.getElementById('lat').value = state.lat;
+            document.getElementById('lon').value = state.lon;
+            document.getElementById('ayanamsa').value = state.ayanamsa;
+        }
+    } catch(e) { console.log("Settings load error", e); }
 }
 
 // --- Start ---
