@@ -13,7 +13,7 @@ const AYANAMSA_MAP = {
 
 // --- State ---
 let state = {
-    lat: 19.0760, lon: 72.8777, tz: 'Asia/Kolkata',
+    lat: 19.0760, lon: 72.8777,
     ayanamsa: 'LAHIRI'
 };
 
@@ -54,18 +54,20 @@ const RULES = {
     "Ketu-Uranus": { base: "Major Negative Momentum in Bearish Sign, but in Bullish signs General Negative Momentum" },
     "Ketu-Neptune": { base: "General Positive Momentum. If Neptune Retrograde or Combust then Negative Momentum" },
     "Ketu-Pluto": { base: "No Effect found" },
+    "Uranus-Neptune": { base: "Major Negative Momentum" },
+    "Uranus-Pluto": { base: "No Effect found" },
 
     "Mercury-Jupiter": { base: "General Positive Momentum" },
     "Mercury-Venus": { base: "Negative Momentum", cond: { "Mercury Combust or Retrograde": "Positive Momentum" } },
     "Mercury-Saturn": { base: "Volatile Trend in both sides" },
-    "Mercury-Rahu": { base: "No Major Effect on Market" },
-    "Mercury-Ketu": { base: "No Major Effect on Market" },
+    "Mercury-Rahu": { base: "No Major Effect on Market. Generally" },
+    "Mercury-Ketu": { base: "No Major Effect on Market. Generally" },
     "Mercury-Uranus": { base: "Positive Momentum" },
     "Mercury-Neptune": { base: "Before Conjunction Positive Momentum and post Conjunction Negative Momentum" },
     "Mercury-Pluto": { base: "Positive Momentum" },
 
     "Jupiter-Venus": { base: "Positive Momentum in Bullish Signs, Negative Momentum in Bearish Signs. If either Retrograde then Negative Momentum" },
-    "Jupiter-Saturn": { base: "Positive Momentum in Bullish Signs, Negative Momentum in Bearish Signs. If either Retrograde then Negative Momentum" },
+    "Jupiter-Saturn": { base: "Positive Momentum. In both planets, if anyone is Retrograde then Negative Momentum" },
     "Jupiter-Rahu": { base: "Positive Momentum, But if Jupiter is Retrograde then Negative Momentum" },
     "Jupiter-Ketu": { base: "Positive Momentum, But if Jupiter is Retrograde then Negative Momentum" },
     "Jupiter-Uranus": { base: "Major Positive Momentum" },
@@ -77,25 +79,14 @@ const RULES = {
 async function init() {
     try {
         swe = new SwissEph();
-        await swe.initSwissEph();
+        await swe.initSwissEph(); // Built-in engine load karega (No .se1 files needed)
         
-        // Load .se1 files (agar aapne repo mein ephe folder banaya hai)
-        // Note: Agar files nahi hain, to Moshier fallback use hoga
-        try {
-            await swe.loadEphemerisFiles([
-                { name: 'sepl_18.se1', url: './ephe/sepl_18.se1' },
-                { name: 'semo_18.se1', url: './ephe/semo_18.se1' },
-                { name: 'seas_18.se1', url: './ephe/seas_18.se1' }
-            ]);
-        } catch(e) {
-            console.warn("Ephemeris files not found, using Moshier fallback.");
-        }
-
         document.getElementById('loading').classList.add('hidden');
         loadSettings();
         showTab('daily');
     } catch (e) {
-        document.getElementById('loading').innerText = "Error loading engine: " + e.message;
+        document.getElementById('loading').innerText = "Error: " + e.message;
+        console.error(e);
     }
 }
 
@@ -106,7 +97,6 @@ function getJulianDay(date) {
 }
 
 function getPlanetPos(planetId, jd) {
-    // SEFLG_SWIEPH = 2, SEFLG_SPEED = 256
     const flags = swe.SEFLG_SWIEPH | swe.SEFLG_SPEED;
     const result = swe.swe_calc_ut(jd, planetId, flags);
     return { lon: result.longitude, speed: result.longitudeSpeed, retro: result.longitudeSpeed < 0 };
@@ -118,7 +108,6 @@ function getAyanamsaValue(jd, mode) {
 }
 
 function isCombust(planetLon, sunLon, planetName) {
-    // Combustion limits (approximate)
     const limits = { Mercury: 14, Venus: 10, Mars: 17, Jupiter: 11, Saturn: 15 };
     let diff = Math.abs(planetLon - sunLon);
     if (diff > 180) diff = 360 - diff;
@@ -126,9 +115,8 @@ function isCombust(planetLon, sunLon, planetName) {
 }
 
 function isBullishSign(lon) {
-    // Aries (0) to Virgo (180) = Bullish, Libra (180) to Pisces (360) = Bearish
     const normLon = (lon % 360 + 360) % 360;
-    return normLon >= 0 && normLon < 180;
+    return normLon >= 0 && normLon < 180; // Aries to Virgo
 }
 
 // --- Rule Evaluator ---
@@ -142,14 +130,12 @@ function evaluateEffect(p1, p2, p1Data, p2Data, sunLon) {
     let effect = rule.base;
     let conditions = rule.cond || {};
 
-    // Check conditions dynamically
     if (conditions["Mercury Retrograde or Combust"] && (p1 === "Mercury" || p2 === "Mercury")) {
         let merc = p1 === "Mercury" ? p1Data : p2Data;
         if (merc.retro || isCombust(merc.lon, sunLon, "Mercury")) effect = conditions["Mercury Retrograde or Combust"];
     }
     if (conditions["Jupiter Fast Moving"] && (p1 === "Jupiter" || p2 === "Jupiter")) {
         let jup = p1 === "Jupiter" ? p1Data : p2Data;
-        // Fast moving approximation: Jupiter speed > 0.1 deg/day
         if (Math.abs(jup.speed) > 0.1) effect = conditions["Jupiter Fast Moving"];
     }
     if (conditions["Saturn Retrograde"] && (p1 === "Saturn" || p2 === "Saturn")) {
@@ -165,7 +151,6 @@ function evaluateEffect(p1, p2, p1Data, p2Data, sunLon) {
         if (nep.retro || isCombust(nep.lon, sunLon, "Neptune")) effect = conditions["Neptune Retrograde or Combust"];
     }
 
-    // Bullish/Bearish Logic for Jupiter/Saturn
     if (effect.includes("Bullish Signs") && (p1 === "Jupiter" || p1 === "Saturn" || p2 === "Jupiter" || p2 === "Saturn")) {
         let combinedLon = (p1Data.lon + p2Data.lon) / 2;
         if (isBullishSign(combinedLon)) {
@@ -175,7 +160,6 @@ function evaluateEffect(p1, p2, p1Data, p2Data, sunLon) {
         }
     }
     
-    // Retrograde override for Jupiter/Venus/Saturn
     if (effect.includes("If either Retrograde") && (p1Data.retro || p2Data.retro)) {
         effect = "Negative Momentum (Retrograde Override)";
     }
@@ -193,7 +177,7 @@ function scanTransits(startDate, endDate, selectedPairs) {
         const jd = getJulianDay(current);
         const ayan = getAyanamsaValue(jd, state.ayanamsa);
         const sunData = getPlanetPos(PLANETS.Sun, jd);
-        const sunLon = sunData.lon - ayan;
+        let sunLon = sunData.lon - ayan;
 
         for (let pair of selectedPairs) {
             let p1 = pair[0], p2 = pair[1];
@@ -204,12 +188,11 @@ function scanTransits(startDate, endDate, selectedPairs) {
             
             p1Data.lon -= ayan;
             p2Data.lon -= ayan;
-            sunLon = sunData.lon - ayan;
 
             let diff = Math.abs(p1Data.lon - p2Data.lon);
             if (diff > 180) diff = 360 - diff;
 
-            if (diff <= 10) { // 10 degree orb for conjunction
+            if (diff <= 10) { // 10 degree orb
                 let effect = evaluateEffect(p1, p2, p1Data, p2Data, sunLon);
                 results.push({
                     date: dayjs(current).format('DD MMM YYYY'),
@@ -247,12 +230,11 @@ function renderTransits(days) {
         const end = new Date();
         end.setDate(end.getDate() + days);
 
-        // All planet pairs to scan
         const allPairs = [
             ['Mars','Mercury'],['Mars','Jupiter'],['Mars','Venus'],['Mars','Saturn'],['Mars','Rahu'],['Mars','Ketu'],['Mars','Uranus'],['Mars','Neptune'],['Mars','Pluto'],
             ['Saturn','Rahu'],['Saturn','Ketu'],['Saturn','Uranus'],['Saturn','Neptune'],['Saturn','Pluto'],
             ['Moon','Mars'],['Moon','Mercury'],['Moon','Jupiter'],['Moon','Venus'],['Moon','Saturn'],['Moon','Rahu'],['Moon','Ketu'],['Moon','Uranus'],['Moon','Neptune'],['Moon','Pluto'],
-            ['Rahu','Uranus'],['Rahu','Neptune'],['Rahu','Pluto'],['Ketu','Uranus'],['Ketu','Neptune'],['Ketu','Pluto'],
+            ['Rahu','Uranus'],['Rahu','Neptune'],['Rahu','Pluto'],['Ketu','Uranus'],['Ketu','Neptune'],['Ketu','Pluto'],['Uranus','Neptune'],['Uranus','Pluto'],
             ['Mercury','Jupiter'],['Mercury','Venus'],['Mercury','Saturn'],['Mercury','Uranus'],['Mercury','Neptune'],['Mercury','Pluto'],
             ['Jupiter','Venus'],['Jupiter','Saturn'],['Jupiter','Rahu'],['Jupiter','Ketu'],['Jupiter','Uranus'],['Jupiter','Neptune'],['Jupiter','Pluto']
         ];
@@ -303,7 +285,7 @@ function runSearch() {
             return;
         }
 
-        let html = '<h3 class="font-bold mb-2">Search Results:</h3>';
+        let html = '<h3 class="font-bold mb-2 text-white">Search Results:</h3>';
         results.forEach(r => {
             const colorClass = r.isPositive ? 'positive' : (r.effect.includes("Negative") ? 'negative' : 'neutral');
             html += `
