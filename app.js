@@ -164,12 +164,13 @@ function evaluateEffect(p1, p2, p1Data, p2Data, sunLon) {
     return effect;
 }
 
-// --- Find Exact Time ---
+// --- Find Exact Time (Optimized for Full Day Scan) ---
 function findExactTime(p1, p2, date, targetOrb, ayanamsaMode) {
     let bestDiff = 999;
     let bestTime = "12:00";
     let bestDegree = 0;
-    
+    let minDiff = 999; // NAYA: Track minimum difference in whole day
+
     for (let m = 0; m < 1440; m += 10) {
         let d = new Date(date);
         d.setHours(0, 0, 0, 0);
@@ -184,6 +185,8 @@ function findExactTime(p1, p2, date, targetOrb, ayanamsaMode) {
         
         let diff = Math.abs(p1Lon - p2Lon);
         if (diff > 180) diff = 360 - diff;
+
+        if (diff < minDiff) minDiff = diff; // Update min difference
         
         let diffFromTarget = Math.abs(diff - targetOrb);
         
@@ -195,7 +198,7 @@ function findExactTime(p1, p2, date, targetOrb, ayanamsaMode) {
             bestDegree = ((p1Lon % 360 + 360) % 360).toFixed(2);
         }
     }
-    return { time: bestTime, degree: bestDegree };
+    return { time: bestTime, degree: bestDegree, minDiff: minDiff };
 }
 
 // --- Transit Scanner ---
@@ -235,35 +238,38 @@ function scanTransits(startDate, endDate, selectedPairs, targetOrb = 5, isDegree
             if (diff > 180) diff = 360 - diff;
 
             let isMatch = false;
+            let exactTimeResult = null;
+
             if (isDegreeSearch) {
-                if (Math.abs(diff - targetOrb) <= 0.5) {
+                // Exact Search: Scan the whole day to find minimum difference
+                exactTimeResult = findExactTime(p1, p2, current, targetOrb, state.ayanamsa);
+                if (exactTimeResult.minDiff <= targetOrb) {
                     isMatch = true;
                 }
             } else {
+                // Dashboard: Check if today's 12:00 PM difference is the minimum
                 if (diff <= targetOrb) {
-                    // For Dashboard: Check if it's the exact day (minimum difference)
                     let prevDiff = Math.abs(prevPos[p1].lon - prevPos[p2].lon);
                     if (prevDiff > 180) prevDiff = 360 - prevDiff;
                     
                     let nextDiff = Math.abs(nextPos[p1].lon - nextPos[p2].lon);
                     if (nextDiff > 180) nextDiff = 360 - nextDiff;
 
-                    // Only show if today's difference is the smallest
                     if (diff <= prevDiff && diff <= nextDiff) {
                         isMatch = true;
+                        exactTimeResult = findExactTime(p1, p2, current, targetOrb, state.ayanamsa);
                     }
                 }
             }
 
-            if (isMatch) {
-                let exact = findExactTime(p1, p2, current, targetOrb, state.ayanamsa);
+            if (isMatch && exactTimeResult) {
                 let effect = evaluateEffect(p1, p2, p1Data, p2Data, sunData.lon);
                 
                 results.push({
                     date: dayjs(current).format('DD MMM YYYY'),
-                    time: exact.time,
+                    time: exactTimeResult.time,
                     p1: p1, p2: p2,
-                    degree: exact.degree,
+                    degree: exactTimeResult.degree,
                     effect: effect,
                     isPositive: effect.includes("Positive") && !effect.includes("Negative")
                 });
@@ -352,22 +358,25 @@ window.runExactSearch = function() {
     const p2 = document.getElementById('exactP2').value;
     const start = document.getElementById('exactStart').value;
     const end = document.getElementById('exactEnd').value;
+    const targetDegree = parseFloat(document.getElementById('exactDegree').value);
     const resultsDiv = document.getElementById('exactResults');
 
     if (!start || !end) { alert("Please select start and end dates."); return; }
     if (p1 === p2) { alert("Please select different planets."); return; }
+    if (isNaN(targetDegree) || targetDegree < 0) { alert("Please enter a valid degree (e.g., 1)"); return; }
 
-    resultsDiv.innerHTML = '<div class="text-center py-4 text-slate-400">Calculating exact conjunction...</div>';
+    resultsDiv.innerHTML = '<div class="text-center py-4 text-slate-400">Calculating conjunction...</div>';
 
     setTimeout(() => {
-        const results = scanTransits(new Date(start), new Date(end), [[p1, p2]], 0, true);
+        // Pass targetDegree (Max Difference) to the scanner
+        const results = scanTransits(new Date(start), new Date(end), [[p1, p2]], targetDegree, true);
         
         if (results.length === 0) {
-            resultsDiv.innerHTML = '<div class="text-center py-4 text-slate-400">No exact conjunction (0°) found in this range.</div>';
+            resultsDiv.innerHTML = '<div class="text-center py-4 text-slate-400">No conjunction found within ${targetDegree}° in this range.</div>';
             return;
         }
 
-        let html = `<h3 class="font-bold mb-2 text-purple-400">Exact Conjunctions (${p1} + ${p2} at 0°):</h3>`;
+        let html = `<h3 class="font-bold mb-2 text-purple-400">Conjunctions (${p1} + ${p2} within ${targetDegree}°):</h3>`;
         results.forEach(r => {
             const colorClass = r.isPositive ? 'positive' : (r.effect.includes("Negative") ? 'negative' : 'neutral');
             html += `
