@@ -57,18 +57,6 @@ const RULES = {
     "Jupiter-Pluto": { base: "Positive Momentum" }
 };
 
-// --- Initialize ---
-function init() {
-    try {
-        document.getElementById('loading').classList.add('hidden');
-        loadSettings();
-        setTimeout(() => { showTab('daily'); }, 100);
-    } catch(e) {
-        document.getElementById('loading').innerText = "Error: " + e.message;
-        console.error(e);
-    }
-}
-
 // --- Core Calculations ---
 function getPlanetPos(planetName, date) {
     const bodyMap = {
@@ -176,13 +164,12 @@ function evaluateEffect(p1, p2, p1Data, p2Data, sunLon) {
     return effect;
 }
 
-// --- Find Exact Time (Optimized) ---
+// --- Find Exact Time ---
 function findExactTime(p1, p2, date, ayanamsaMode) {
     let bestDiff = 999;
     let bestTime = "12:00";
     let bestDegree = 0;
     
-    // Check every 10 minutes (instead of 30) for precise time
     for (let m = 0; m < 1440; m += 10) {
         let d = new Date(date);
         d.setHours(0, 0, 0, 0);
@@ -209,7 +196,7 @@ function findExactTime(p1, p2, date, ayanamsaMode) {
     return { time: bestTime, degree: bestDegree };
 }
 
-// --- Transit Scanner (Fixed to show only Exact Day) ---
+// --- Transit Scanner ---
 function scanTransits(startDate, endDate, selectedPairs) {
     let results = [];
     let current = new Date(startDate);
@@ -245,16 +232,13 @@ function scanTransits(startDate, endDate, selectedPairs) {
             let diff = Math.abs(p1Data.lon - p2Data.lon);
             if (diff > 180) diff = 360 - diff;
 
-            // Only check if it's a tight conjunction (within 5 degrees)
             if (diff <= 5) { 
-                // Check if TODAY is the exact day (minimum difference)
                 let prevDiff = Math.abs(prevPos[p1].lon - prevPos[p2].lon);
                 if (prevDiff > 180) prevDiff = 360 - prevDiff;
                 
                 let nextDiff = Math.abs(nextPos[p1].lon - nextPos[p2].lon);
                 if (nextDiff > 180) nextDiff = 360 - nextDiff;
 
-                // If today's difference is the smallest, it's the exact conjunction day
                 if (diff <= prevDiff && diff <= nextDiff) {
                     let exact = findExactTime(p1, p2, current, state.ayanamsa);
                     let effect = evaluateEffect(p1, p2, p1Data, p2Data, sunData.lon);
@@ -275,8 +259,24 @@ function scanTransits(startDate, endDate, selectedPairs) {
     return results;
 }
 
-// --- UI Functions ---
-function showTab(tab) {
+// ==========================================
+// GLOBAL FUNCTIONS (Linking to HTML Buttons)
+// ==========================================
+
+window.toggleSettings = function() {
+    document.getElementById('settingsPanel').classList.toggle('hidden');
+};
+
+window.saveSettings = function() {
+    state.lat = parseFloat(document.getElementById('lat').value);
+    state.lon = parseFloat(document.getElementById('lon').value);
+    state.ayanamsa = document.getElementById('ayanamsa').value;
+    localStorage.setItem('astroSettings', JSON.stringify(state));
+    alert("Settings saved!");
+    window.showTab('daily');
+};
+
+window.showTab = function(tab) {
     try {
         document.querySelectorAll('.content-section').forEach(el => el.classList.add('hidden'));
         document.querySelectorAll('.tab-active').forEach(el => el.classList.remove('tab-active'));
@@ -290,8 +290,47 @@ function showTab(tab) {
     } catch(e) {
         alert("Error: " + e.message);
     }
-}
+};
 
+window.runSearch = function() {
+    const p1 = document.getElementById('searchP1').value;
+    const p2 = document.getElementById('searchP2').value;
+    const start = document.getElementById('searchStart').value;
+    const end = document.getElementById('searchEnd').value;
+    const resultsDiv = document.getElementById('searchResults');
+
+    if (!start || !end) { alert("Please select start and end dates."); return; }
+    if (p1 === p2) { alert("Please select different planets."); return; }
+
+    resultsDiv.innerHTML = '<div class="text-center py-4 text-slate-400">Searching...</div>';
+
+    setTimeout(() => {
+        const results = scanTransits(new Date(start), new Date(end), [[p1, p2]]);
+        
+        if (results.length === 0) {
+            resultsDiv.innerHTML = '<div class="text-center py-4 text-slate-400">No conjunction found in this range.</div>';
+            return;
+        }
+
+        let html = '<h3 class="font-bold mb-2 text-white">Search Results:</h3>';
+        results.forEach(r => {
+            const colorClass = r.isPositive ? 'positive' : (r.effect.includes("Negative") ? 'negative' : 'neutral');
+            html += `
+                <div class="card">
+                    <div class="flex justify-between items-center mb-1">
+                        <span class="text-sm text-slate-400">${r.date} at ${r.time}</span>
+                        <span class="text-xs bg-slate-700 px-2 py-1 rounded">${r.degree}°</span>
+                    </div>
+                    <div class="font-bold text-lg text-white">${r.p1} + ${r.p2}</div>
+                    <div class="mt-1 text-sm ${colorClass}">${r.effect}</div>
+                </div>
+            `;
+        });
+        resultsDiv.innerHTML = html;
+    }, 100);
+};
+
+// --- Internal Render Function ---
 function renderTransits(days) {
     const container = document.getElementById(`content-${days === 1 ? 'daily' : days === 7 ? 'weekly' : 'monthly'}`);
     container.innerHTML = '<div class="text-center py-4 text-slate-400">Calculating...</div>';
@@ -335,59 +374,7 @@ function renderTransits(days) {
     }, 100);
 }
 
-// --- Search Function ---
-function runSearch() {
-    const p1 = document.getElementById('searchP1').value;
-    const p2 = document.getElementById('searchP2').value;
-    const start = document.getElementById('searchStart').value;
-    const end = document.getElementById('searchEnd').value;
-    const resultsDiv = document.getElementById('searchResults');
-
-    if (!start || !end) { alert("Please select start and end dates."); return; }
-    if (p1 === p2) { alert("Please select different planets."); return; }
-
-    resultsDiv.innerHTML = '<div class="text-center py-4 text-slate-400">Searching...</div>';
-
-    setTimeout(() => {
-        const results = scanTransits(new Date(start), new Date(end), [[p1, p2]]);
-        
-        if (results.length === 0) {
-            resultsDiv.innerHTML = '<div class="text-center py-4 text-slate-400">No conjunction found in this range.</div>';
-            return;
-        }
-
-        let html = '<h3 class="font-bold mb-2 text-white">Search Results:</h3>';
-        results.forEach(r => {
-            const colorClass = r.isPositive ? 'positive' : (r.effect.includes("Negative") ? 'negative' : 'neutral');
-            html += `
-                <div class="card">
-                    <div class="flex justify-between items-center mb-1">
-                        <span class="text-sm text-slate-400">${r.date} at ${r.time}</span>
-                        <span class="text-xs bg-slate-700 px-2 py-1 rounded">${r.degree}°</span>
-                    </div>
-                    <div class="font-bold text-lg text-white">${r.p1} + ${r.p2}</div>
-                    <div class="mt-1 text-sm ${colorClass}">${r.effect}</div>
-                </div>
-            `;
-        });
-        resultsDiv.innerHTML = html;
-    }, 100);
-}
-
-// --- Settings ---
-function toggleSettings() {
-    document.getElementById('settingsPanel').classList.toggle('hidden');
-}
-
-function saveSettings() {
-    state.lat = parseFloat(document.getElementById('lat').value);
-    state.lon = parseFloat(document.getElementById('lon').value);
-    state.ayanamsa = document.getElementById('ayanamsa').value;
-    localStorage.setItem('astroSettings', JSON.stringify(state));
-    alert("Settings saved!");
-    showTab('daily');
-}
-
+// --- Init ---
 function loadSettings() {
     try {
         const saved = localStorage.getItem('astroSettings');
@@ -400,5 +387,7 @@ function loadSettings() {
     } catch(e) { console.log("Settings load error", e); }
 }
 
-// --- Start ---
-init();
+// Start the app
+document.getElementById('loading').classList.add('hidden');
+loadSettings();
+setTimeout(() => { window.showTab('daily'); }, 100);
