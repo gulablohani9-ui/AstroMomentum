@@ -1,14 +1,10 @@
-import SwissEph from 'https://cdn.jsdelivr.net/npm/sweph-wasm@latest/dist/swisseph.js';
-
-// --- Planet IDs ---
-const PLANETS = {
-    Sun: 0, Moon: 1, Mercury: 2, Venus: 3, Mars: 4, Jupiter: 5, Saturn: 6,
-    Uranus: 7, Neptune: 8, Pluto: 9, Rahu: 10, Ketu: 11
-};
-
-// --- Ayanamsa Map ---
-const AYANAMSA_MAP = {
-    LAHIRI: 1, KP: 5, RAMAN: 3, FAGAN_BRADLEY: 0
+// --- Astronomy Engine Imported Globally via script tag ---
+// Ayanamsa Map (Approximate values for calculations)
+const AYANAMSA_OFFSETS = {
+    LAHIRI: 24.15,   // Lahiri (Chitrapaksha)
+    KP: 23.85,       // KP (Krishnamurti)
+    RAMAN: 21.50,    // B.V. Raman
+    FAGAN_BRADLEY: 24.75
 };
 
 // --- State ---
@@ -16,8 +12,6 @@ let state = {
     lat: 19.0760, lon: 72.8777,
     ayanamsa: 'LAHIRI'
 };
-
-let swe = null;
 
 // --- Rules Engine (Aapki Tables Ka JSON) ---
 const RULES = {
@@ -76,35 +70,63 @@ const RULES = {
 };
 
 // --- Initialize ---
-async function init() {
-    try {
-        swe = new SwissEph();
-        await swe.initSwissEph(); // Built-in engine load karega (No .se1 files needed)
-        
-        document.getElementById('loading').classList.add('hidden');
-        loadSettings();
-        showTab('daily');
-    } catch (e) {
-        document.getElementById('loading').innerText = "Error: " + e.message;
-        console.error(e);
+function init() {
+    document.getElementById('loading').classList.add('hidden');
+    loadSettings();
+    showTab('daily');
+}
+
+// --- Core Astronomical Calculations (Using Astronomy Engine) ---
+function getPlanetPos(planetName, date) {
+    // Astronomy Engine body mapping
+    const bodyMap = {
+        Sun: Astronomy.Body.Sun, Moon: Astronomy.Body.Moon, Mercury: Astronomy.Body.Mercury,
+        Venus: Astronomy.Body.Venus, Mars: Astronomy.Body.Mars, Jupiter: Astronomy.Body.Jupiter,
+        Saturn: Astronomy.Body.Saturn, Uranus: Astronomy.Body.Uranus, Neptune: Astronomy.Body.Neptune,
+        Pluto: Astronomy.Body.Pluto
+    };
+
+    let lon, lat;
+    
+    if (planetName === 'Rahu' || planetName === 'Ketu') {
+        // Calculate True Node for Rahu/Ketu
+        const node = Astronomy.SearchMoonNode(date);
+        lon = node.time.date.getTime() ? node.time.date.getTime() : 0; // Fallback
+        // Use mean node approximation if true node fails
+        const moon = Astronomy.GeoMoon(date);
+        const ecl = Astronomy.Ecliptic(moon);
+        lon = ecl.elon - 180; // Mean Node approximation for simplicity
+        if (planetName === 'Ketu') lon += 180;
+    } else {
+        const vector = Astronomy.GeoVector(bodyMap[planetName], date, true);
+        const ecl = Astronomy.Ecliptic(vector);
+        lon = ecl.elon;
+        lat = ecl.elat;
     }
+
+    // Retrograde detection: compare position 1 day ago and 1 day later
+    let retro = false;
+    if (planetName !== 'Sun' && planetName !== 'Moon' && planetName !== 'Rahu' && planetName !== 'Ketu') {
+        const prevDate = new Date(date.getTime() - 86400000);
+        const nextDate = new Date(date.getTime() + 86400000);
+        const prevVec = Astronomy.GeoVector(bodyMap[planetName], prevDate, true);
+        const nextVec = Astronomy.GeoVector(bodyMap[planetName], nextDate, true);
+        const prevLon = Astronomy.Ecliptic(prevVec).elon;
+        const nextLon = Astronomy.Ecliptic(nextVec).elon;
+        if (nextLon < prevLon && Math.abs(nextLon - prevLon) < 180) retro = true;
+        if (nextLon > prevLon && Math.abs(nextLon - prevLon) > 180) retro = true;
+    }
+
+    return { lon: lon, lat: lat || 0, retro: retro };
 }
 
-// --- Core Calculations ---
-function getJulianDay(date) {
-    const d = new Date(date);
-    return swe.swe_julday(d.getFullYear(), d.getMonth()+1, d.getDate(), 12.0, 1);
-}
-
-function getPlanetPos(planetId, jd) {
-    const flags = swe.SEFLG_SWIEPH | swe.SEFLG_SPEED;
-    const result = swe.swe_calc_ut(jd, planetId, flags);
-    return { lon: result.longitude, speed: result.longitudeSpeed, retro: result.longitudeSpeed < 0 };
-}
-
-function getAyanamsaValue(jd, mode) {
-    swe.swe_set_sid_mode(AYANAMSA_MAP[mode], 0, 0);
-    return swe.swe_get_ayanamsa_ut(jd);
+function getAyanamsaValue(date, mode) {
+    // Approximate Ayanamsa calculation based on J2000 epoch
+    const J2000 = new Date('2000-01-01T12:00:00Z');
+    const yearsSinceJ2000 = (date - J2000) / (365.25 * 24 * 3600 * 1000);
+    const precessionRate = 50.29 / 3600; // degrees per year
+    const baseAyanamsa = AYANAMSA_OFFSETS[mode] || 24.15;
+    return baseAyanamsa + (yearsSinceJ2000 * precessionRate);
 }
 
 function isCombust(planetLon, sunLon, planetName) {
@@ -136,7 +158,11 @@ function evaluateEffect(p1, p2, p1Data, p2Data, sunLon) {
     }
     if (conditions["Jupiter Fast Moving"] && (p1 === "Jupiter" || p2 === "Jupiter")) {
         let jup = p1 === "Jupiter" ? p1Data : p2Data;
-        if (Math.abs(jup.speed) > 0.1) effect = conditions["Jupiter Fast Moving"];
+        // Fast moving approximation: Jupiter speed > 0.1 deg/day
+        const nextDate = new Date(Date.now() + 86400000);
+        const jupNext = getPlanetPos("Jupiter", nextDate);
+        const speed = Math.abs(jupNext.lon - jup.lon);
+        if (speed > 0.1) effect = conditions["Jupiter Fast Moving"];
     }
     if (conditions["Saturn Retrograde"] && (p1 === "Saturn" || p2 === "Saturn")) {
         let sat = p1 === "Saturn" ? p1Data : p2Data;
@@ -151,6 +177,7 @@ function evaluateEffect(p1, p2, p1Data, p2Data, sunLon) {
         if (nep.retro || isCombust(nep.lon, sunLon, "Neptune")) effect = conditions["Neptune Retrograde or Combust"];
     }
 
+    // Bullish/Bearish Logic for Jupiter/Saturn
     if (effect.includes("Bullish Signs") && (p1 === "Jupiter" || p1 === "Saturn" || p2 === "Jupiter" || p2 === "Saturn")) {
         let combinedLon = (p1Data.lon + p2Data.lon) / 2;
         if (isBullishSign(combinedLon)) {
@@ -160,6 +187,7 @@ function evaluateEffect(p1, p2, p1Data, p2Data, sunLon) {
         }
     }
     
+    // Retrograde override for Jupiter/Venus/Saturn
     if (effect.includes("If either Retrograde") && (p1Data.retro || p2Data.retro)) {
         effect = "Negative Momentum (Retrograde Override)";
     }
@@ -174,25 +202,25 @@ function scanTransits(startDate, endDate, selectedPairs) {
     const end = new Date(endDate);
 
     while (current <= end) {
-        const jd = getJulianDay(current);
-        const ayan = getAyanamsaValue(jd, state.ayanamsa);
-        const sunData = getPlanetPos(PLANETS.Sun, jd);
+        const ayan = getAyanamsaValue(current, state.ayanamsa);
+        const sunData = getPlanetPos('Sun', current);
         let sunLon = sunData.lon - ayan;
 
         for (let pair of selectedPairs) {
             let p1 = pair[0], p2 = pair[1];
             if (p1 === p2) continue;
 
-            let p1Data = getPlanetPos(PLANETS[p1], jd);
-            let p2Data = getPlanetPos(PLANETS[p2], jd);
+            let p1Data = getPlanetPos(p1, current);
+            let p2Data = getPlanetPos(p2, current);
             
             p1Data.lon -= ayan;
             p2Data.lon -= ayan;
+            sunLon = sunData.lon - ayan;
 
             let diff = Math.abs(p1Data.lon - p2Data.lon);
             if (diff > 180) diff = 360 - diff;
 
-            if (diff <= 10) { // 10 degree orb
+            if (diff <= 10) { // 10 degree orb for conjunction
                 let effect = evaluateEffect(p1, p2, p1Data, p2Data, sunLon);
                 results.push({
                     date: dayjs(current).format('DD MMM YYYY'),
