@@ -164,12 +164,13 @@ function evaluateEffect(p1, p2, p1Data, p2Data, sunLon) {
     return effect;
 }
 
-// --- Find Exact Time ---
-function findExactTime(p1, p2, date, ayanamsaMode) {
+// --- Find Exact Time based on Target Degree ---
+function findExactTime(p1, p2, date, targetOrb, ayanamsaMode) {
     let bestDiff = 999;
     let bestTime = "12:00";
     let bestDegree = 0;
     
+    // Check every 10 minutes for precision
     for (let m = 0; m < 1440; m += 10) {
         let d = new Date(date);
         d.setHours(0, 0, 0, 0);
@@ -185,8 +186,11 @@ function findExactTime(p1, p2, date, ayanamsaMode) {
         let diff = Math.abs(p1Lon - p2Lon);
         if (diff > 180) diff = 360 - diff;
         
-        if (diff < bestDiff) {
-            bestDiff = diff;
+        // Find the time when the difference is closest to targetOrb
+        let diffFromTarget = Math.abs(diff - targetOrb);
+        
+        if (diffFromTarget < bestDiff) {
+            bestDiff = diffFromTarget;
             let hours = Math.floor(m / 60);
             let mins = m % 60;
             bestTime = String(hours).padStart(2, '0') + ":" + String(mins).padStart(2, '0');
@@ -197,27 +201,20 @@ function findExactTime(p1, p2, date, ayanamsaMode) {
 }
 
 // --- Transit Scanner ---
-function scanTransits(startDate, endDate, selectedPairs) {
+function scanTransits(startDate, endDate, selectedPairs, targetOrb = 5, isDegreeSearch = false) {
     let results = [];
     let current = new Date(startDate);
     const end = new Date(endDate);
 
     while (current <= end) {
         let currentAyan = getAyanamsaValue(current, state.ayanamsa);
-        let prevDate = new Date(current); prevDate.setDate(prevDate.getDate() - 1);
-        let nextDate = new Date(current); nextDate.setDate(nextDate.getDate() + 1);
-
+        
         let currentPos = {};
-        let prevPos = {};
-        let nextPos = {};
-
         const allPlanets = ['Sun', 'Moon', 'Mercury', 'Venus', 'Mars', 'Jupiter', 'Saturn', 'Uranus', 'Neptune', 'Pluto', 'Rahu', 'Ketu'];
         
         allPlanets.forEach(p => {
             let c = getPlanetPos(p, current); c.lon -= currentAyan;
-            let pr = getPlanetPos(p, prevDate); pr.lon -= getAyanamsaValue(prevDate, state.ayanamsa);
-            let nx = getPlanetPos(p, nextDate); nx.lon -= getAyanamsaValue(nextDate, state.ayanamsa);
-            currentPos[p] = c; prevPos[p] = pr; nextPos[p] = nx;
+            currentPos[p] = c;
         });
 
         const sunData = currentPos['Sun'];
@@ -232,26 +229,31 @@ function scanTransits(startDate, endDate, selectedPairs) {
             let diff = Math.abs(p1Data.lon - p2Data.lon);
             if (diff > 180) diff = 360 - diff;
 
-            if (diff <= 5) { 
-                let prevDiff = Math.abs(prevPos[p1].lon - prevPos[p2].lon);
-                if (prevDiff > 180) prevDiff = 360 - prevDiff;
-                
-                let nextDiff = Math.abs(nextPos[p1].lon - nextPos[p2].lon);
-                if (nextDiff > 180) nextDiff = 360 - nextDiff;
-
-                if (diff <= prevDiff && diff <= nextDiff) {
-                    let exact = findExactTime(p1, p2, current, state.ayanamsa);
-                    let effect = evaluateEffect(p1, p2, p1Data, p2Data, sunData.lon);
-                    
-                    results.push({
-                        date: dayjs(current).format('DD MMM YYYY'),
-                        time: exact.time,
-                        p1: p1, p2: p2,
-                        degree: exact.degree,
-                        effect: effect,
-                        isPositive: effect.includes("Positive") && !effect.includes("Negative")
-                    });
+            // If searching by degree, check if diff is close to targetOrb (allow 0.5 deg tolerance)
+            // If normal daily scan, just check if diff <= 5
+            let isMatch = false;
+            if (isDegreeSearch) {
+                if (Math.abs(diff - targetOrb) <= 0.5) {
+                    isMatch = true;
                 }
+            } else {
+                if (diff <= targetOrb) {
+                    isMatch = true;
+                }
+            }
+
+            if (isMatch) {
+                let exact = findExactTime(p1, p2, current, targetOrb, state.ayanamsa);
+                let effect = evaluateEffect(p1, p2, p1Data, p2Data, sunData.lon);
+                
+                results.push({
+                    date: dayjs(current).format('DD MMM YYYY'),
+                    time: exact.time,
+                    p1: p1, p2: p2,
+                    degree: exact.degree,
+                    effect: effect,
+                    isPositive: effect.includes("Positive") && !effect.includes("Negative")
+                });
             }
         }
         current.setDate(current.getDate() + 1);
@@ -297,22 +299,25 @@ window.runSearch = function() {
     const p2 = document.getElementById('searchP2').value;
     const start = document.getElementById('searchStart').value;
     const end = document.getElementById('searchEnd').value;
+    const targetDegree = parseFloat(document.getElementById('searchDegree').value);
     const resultsDiv = document.getElementById('searchResults');
 
     if (!start || !end) { alert("Please select start and end dates."); return; }
     if (p1 === p2) { alert("Please select different planets."); return; }
+    if (isNaN(targetDegree) || targetDegree < 0) { alert("Please enter a valid degree (e.g., 1)"); return; }
 
     resultsDiv.innerHTML = '<div class="text-center py-4 text-slate-400">Searching...</div>';
 
     setTimeout(() => {
-        const results = scanTransits(new Date(start), new Date(end), [[p1, p2]]);
+        // Here, we pass true for isDegreeSearch
+        const results = scanTransits(new Date(start), new Date(end), [[p1, p2]], targetDegree, true);
         
         if (results.length === 0) {
-            resultsDiv.innerHTML = '<div class="text-center py-4 text-slate-400">No conjunction found in this range.</div>';
+            resultsDiv.innerHTML = '<div class="text-center py-4 text-slate-400">No conjunction found at this degree in this range.</div>';
             return;
         }
 
-        let html = '<h3 class="font-bold mb-2 text-white">Search Results:</h3>';
+        let html = `<h3 class="font-bold mb-2 text-white">Results for ${p1} + ${p2} at ~${targetDegree}°:</h3>`;
         results.forEach(r => {
             const colorClass = r.isPositive ? 'positive' : (r.effect.includes("Negative") ? 'negative' : 'neutral');
             html += `
@@ -349,7 +354,8 @@ function renderTransits(days) {
             ['Jupiter','Venus'],['Jupiter','Saturn'],['Jupiter','Rahu'],['Jupiter','Ketu'],['Jupiter','Uranus'],['Jupiter','Neptune'],['Jupiter','Pluto']
         ];
 
-        const results = scanTransits(start, end, allPairs);
+        // For normal daily/weekly/monthly, we pass targetOrb = 5 (5 degree orb)
+        const results = scanTransits(start, end, allPairs, 5, false);
         
         if (results.length === 0) {
             container.innerHTML = '<div class="text-center py-4 text-slate-400">No major conjunctions found in this period.</div>';
