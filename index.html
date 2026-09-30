@@ -48,7 +48,7 @@
         <button onclick="showTab('search')" id="tab-search" class="tab-btn px-2 py-1 whitespace-nowrap">Search</button>
     </div>
 
-    <!-- Loading -->
+    <!-- Loading / Error Message -->
     <div id="loading" class="text-center py-10 text-yellow-400 font-bold">Loading Astro Engine...</div>
 
     <!-- Content -->
@@ -86,9 +86,10 @@
         ⚠️ Educational Purpose Only. Not Financial Advice.
     </div>
 
-    <!-- Astronomy Engine (Pure JS, No WASM) -->
+    <!-- Astronomy Engine (Pure JS) -->
     <script src="https://cdn.jsdelivr.net/npm/astronomy-engine@2.1.19/astronomy.browser.js"></script>
     
-    <script type="module" src="app.js"></script>
+    <!-- Normal Script (NOT MODULE) so HTML buttons can access functions -->
+    <script src="app.js"></script>
 </body>
 </html>
