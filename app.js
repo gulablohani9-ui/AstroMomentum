@@ -81,9 +81,8 @@ function getPlanetPos(planetName, date) {
     let lon = 0;
     
     if (planetName === 'Rahu' || planetName === 'Ketu') {
-        // Pure mathematical Mean Node calculation (No external API crashes)
         const J2000 = new Date('2000-01-01T12:00:00Z');
-        const T = (date - J2000) / (36525 * 24 * 3600 * 1000); // Julian centuries
+        const T = (date - J2000) / (36525 * 24 * 3600 * 1000);
         lon = 125.04452 - 1934.136261 * T + 0.0020708 * T * T + (T * T * T) / 450000;
         if (planetName === 'Ketu') lon += 180;
     } else {
@@ -177,14 +176,14 @@ function evaluateEffect(p1, p2, p1Data, p2Data, sunLon) {
     return effect;
 }
 
-// --- Find Exact Time (Optimized for Speed) ---
+// --- Find Exact Time (Optimized) ---
 function findExactTime(p1, p2, date, ayanamsaMode) {
     let bestDiff = 999;
     let bestTime = "12:00";
     let bestDegree = 0;
     
-    // Check every 30 minutes instead of 15 to make it 2x faster
-    for (let m = 0; m < 1440; m += 30) {
+    // Check every 10 minutes (instead of 30) for precise time
+    for (let m = 0; m < 1440; m += 10) {
         let d = new Date(date);
         d.setHours(0, 0, 0, 0);
         d.setMinutes(m);
@@ -210,48 +209,65 @@ function findExactTime(p1, p2, date, ayanamsaMode) {
     return { time: bestTime, degree: bestDegree };
 }
 
-// --- Transit Scanner (Optimized) ---
+// --- Transit Scanner (Fixed to show only Exact Day) ---
 function scanTransits(startDate, endDate, selectedPairs) {
     let results = [];
     let current = new Date(startDate);
     const end = new Date(endDate);
 
     while (current <= end) {
-        const ayan = getAyanamsaValue(current, state.ayanamsa);
-        const sunData = getPlanetPos('Sun', current);
-        let sunLon = sunData.lon - ayan;
+        let currentAyan = getAyanamsaValue(current, state.ayanamsa);
+        let prevDate = new Date(current); prevDate.setDate(prevDate.getDate() - 1);
+        let nextDate = new Date(current); nextDate.setDate(nextDate.getDate() + 1);
 
-        // Pre-calculate all planet positions for this day at 12:00 to save massive time
-        let dayPositions = {};
+        let currentPos = {};
+        let prevPos = {};
+        let nextPos = {};
+
         const allPlanets = ['Sun', 'Moon', 'Mercury', 'Venus', 'Mars', 'Jupiter', 'Saturn', 'Uranus', 'Neptune', 'Pluto', 'Rahu', 'Ketu'];
+        
         allPlanets.forEach(p => {
-            let pos = getPlanetPos(p, current);
-            pos.lon -= ayan;
-            dayPositions[p] = pos;
+            let c = getPlanetPos(p, current); c.lon -= currentAyan;
+            let pr = getPlanetPos(p, prevDate); pr.lon -= getAyanamsaValue(prevDate, state.ayanamsa);
+            let nx = getPlanetPos(p, nextDate); nx.lon -= getAyanamsaValue(nextDate, state.ayanamsa);
+            currentPos[p] = c; prevPos[p] = pr; nextPos[p] = nx;
         });
+
+        const sunData = currentPos['Sun'];
 
         for (let pair of selectedPairs) {
             let p1 = pair[0], p2 = pair[1];
             if (p1 === p2) continue;
 
-            let p1Data = dayPositions[p1];
-            let p2Data = dayPositions[p2];
+            let p1Data = currentPos[p1];
+            let p2Data = currentPos[p2];
 
             let diff = Math.abs(p1Data.lon - p2Data.lon);
             if (diff > 180) diff = 360 - diff;
 
-            if (diff <= 10) { // Conjunction detected
-                let exact = findExactTime(p1, p2, current, state.ayanamsa);
-                let effect = evaluateEffect(p1, p2, p1Data, p2Data, sunLon);
+            // Only check if it's a tight conjunction (within 5 degrees)
+            if (diff <= 5) { 
+                // Check if TODAY is the exact day (minimum difference)
+                let prevDiff = Math.abs(prevPos[p1].lon - prevPos[p2].lon);
+                if (prevDiff > 180) prevDiff = 360 - prevDiff;
                 
-                results.push({
-                    date: dayjs(current).format('DD MMM YYYY'),
-                    time: exact.time,
-                    p1: p1, p2: p2,
-                    degree: exact.degree,
-                    effect: effect,
-                    isPositive: effect.includes("Positive") && !effect.includes("Negative")
-                });
+                let nextDiff = Math.abs(nextPos[p1].lon - nextPos[p2].lon);
+                if (nextDiff > 180) nextDiff = 360 - nextDiff;
+
+                // If today's difference is the smallest, it's the exact conjunction day
+                if (diff <= prevDiff && diff <= nextDiff) {
+                    let exact = findExactTime(p1, p2, current, state.ayanamsa);
+                    let effect = evaluateEffect(p1, p2, p1Data, p2Data, sunData.lon);
+                    
+                    results.push({
+                        date: dayjs(current).format('DD MMM YYYY'),
+                        time: exact.time,
+                        p1: p1, p2: p2,
+                        degree: exact.degree,
+                        effect: effect,
+                        isPositive: effect.includes("Positive") && !effect.includes("Negative")
+                    });
+                }
             }
         }
         current.setDate(current.getDate() + 1);
