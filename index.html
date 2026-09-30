@@ -73,10 +73,17 @@
                     <option>Neptune</option><option>Pluto</option>
                 </select>
             </div>
+            
             <label class="block text-xs mb-1 text-slate-400">Start Date</label>
             <input type="date" id="searchStart" class="w-full p-2 mb-2 bg-slate-700 rounded text-white outline-none">
+            
             <label class="block text-xs mb-1 text-slate-400">End Date</label>
-            <input type="date" id="searchEnd" class="w-full p-2 mb-3 bg-slate-700 rounded text-white outline-none">
+            <input type="date" id="searchEnd" class="w-full p-2 mb-2 bg-slate-700 rounded text-white outline-none">
+
+            <!-- NAYA INPUT: Target Degree -->
+            <label class="block text-xs mb-1 text-slate-400">Target Degree (Orb - e.g., 1)</label>
+            <input type="number" id="searchDegree" value="1" step="0.1" min="0" max="15" class="w-full p-2 mb-3 bg-slate-700 rounded text-white outline-none">
+            
             <button onclick="runSearch()" class="w-full bg-green-600 hover:bg-green-700 text-white p-2 rounded font-bold cursor-pointer">Search</button>
         </div>
         <div id="searchResults"></div>
